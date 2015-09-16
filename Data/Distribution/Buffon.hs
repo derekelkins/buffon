@@ -6,13 +6,24 @@
 
 -- From "On Buffon Machines and Numbers" by Flajolet, Pelletier, and Soria
 
-module Data.Distribution.Buffon where
+module Data.Distribution.Buffon (
+    Buffon, runBuffon, runBuffonWithSystemRandomT,
+    toss, third, toNumberWith, toNumberM, toNumber,
+    expectationWith, expectationM, expectation,
+    bernoulli, if_, mean, evenParity, geometric,
+    poisson, poisson', logarithmic, logarithmic',
+    squareRoot, ramanujan, arctan, integrate, createReal,
+    pi8, pi4
+  ) where
 import Control.Monad.IO.Class ( MonadIO )
 import Control.Monad.Primitive ( PrimMonad )
 import Control.Monad.Primitive.Class ( MonadPrim(..) )
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans.Class ( MonadTrans )
+import Data.Bits ( testBit )
 import Data.Function ( fix )
+import Data.Word ( Word64 )
+import System.Random.MWC ( Variate )
 import System.Random.MWC.Monad ( uniform, Rand, runWithCreate, runWithSystemRandomT )
 
 newtype Buffon m a = Buffon { unBuffon :: Rand m a }
@@ -33,9 +44,16 @@ runBuffonWithSystemRandomT = runWithSystemRandomT . unBuffon
 
 ----
 
--- | Toss a coin.  Calculates: P(toss) = 0.5
+-- | Toss a coin.  Calculates: P(toss) = 1/2
 toss :: (MonadPrim m) => Buffon m Bool
 toss = Buffon uniform
+
+-- | A biased coin. Calculates: P(third) = 1/3
+third :: (MonadPrim m) => Buffon m Bool
+third = do
+    a <- toss
+    b <- toss
+    if a && b then third else return (not (a||b))
 
 toNumberWith :: (Fractional n, MonadPrim m) => Int -> Buffon m Bool -> m n
 toNumberWith n p = runBuffon (go n 0)
@@ -68,6 +86,12 @@ expectation p = runST (expectationM p)
 -- bernoulli x = fmap (\n -> bits x !! (n+1) == 1) (geometric toss)
 --  where bits x returns the bits of the binary expansion of x
 
+-- Cheating bernoulli
+bernoulli :: (Ord n, Variate n, Fractional n, MonadPrim m) => n -> Buffon m Bool
+bernoulli p = do
+    x <- Buffon uniform
+    if x <= p then 1 else 0
+
 -- | Calculates: P(if_ (bernoulli r) (bernoulli p) (bernoulli q)) = rp + (1-r)q
 if_ :: (MonadPrim m) => Buffon m Bool -> Buffon m a -> Buffon m a -> Buffon m a
 if_ r p q = do b <- r; if b then p else q
@@ -98,7 +122,7 @@ instance (MonadPrim m) => Num (Buffon m Bool) where
 
 -- | Calculates: P(evenParity (bernoulli p)) = 1/(1+p)
 evenParity :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
-evenParity p = fix (\q -> p + ((-p) * q))
+evenParity p = fix (\q -> if_ p (if_ p q 0) 1)
 
 -- | Calculates: P(geometric (bernoulli p) == r) = (1-p)p^r
 geometric :: (MonadPrim m) => Buffon m Bool -> Buffon m Int
@@ -187,11 +211,46 @@ logarithmic' = fmap ((1==) . fst) . logarithmic
 squareRoot :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 squareRoot p = go 0
     where go !c = if_ p (bump (bump go) c) (return (c==0))
-          bump k !c = if_ toss (k (c+1)) (k (c-1))
+          bump k !c = mean (k (c+1)) (k (c-1))
 
--- | Calculates: P(rama) = 1/pi
-rama :: (MonadPrim m) => Buffon m Bool
-rama = undefined
+-- | Calculates: P(ramanujan) = 1/pi
+ramanujan :: (MonadPrim m) => Buffon m Bool
+ramanujan = do
+    x1 <- geometric (toss*toss)
+    x2 <- geometric (toss*toss)
+    b <- bernoulli (5/9 :: Double)
+    let t = 2*(if b then x1 + x2 + 1 else x1 + x2)
+    let go 0 !c = return $ c == 0
+        go i  c = mean (go (i-1) (c+1)) (go (i-1) (c-1))
+    go t 0 * go t 0 * go t 0
+
+-- Close enough to a real...
+-- We could save random bits by flipping on demand and caching the results but it doesn't seem worth it...
+createReal :: (MonadPrim m) => Buffon m (Buffon m Bool)
+createReal = do
+    u <- Buffon uniform
+    return (do
+        n <- geometric toss
+        return (testBit (u :: Word64) n))
+
+integrate :: (MonadPrim m) => (Buffon m Bool -> Buffon m Bool) -> Buffon m Bool -> Buffon m Bool
+integrate f p = createReal >>= f . (p*)
+
+-- | Calculates: P(arctan (bernoulli p)) = atan p
+arctan :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
+arctan p = p * (do u <- createReal; evenParity (p*(p*(u*u))))
+
+-- | Calculates: P(pi8) = pi/8 (via (atan(1/2) + atan(1/3))/2)
+pi8 :: (MonadPrim m) => Buffon m Bool
+pi8 = mean (arctan toss) (arctan third)
+
+-- | Calculates: P(pi4) = pi/4 (via atan(1))
+pi4 :: (MonadPrim m) => Buffon m Bool
+pi4 = do u <- createReal; evenParity (u*u)
+
+-- | Calculates: P(zeta3) = 3zeta(3)/4
+zeta3 :: (MonadPrim m) => Buffon m Bool
+zeta3 = integrate (\x -> integrate (\y -> integrate (\z -> evenParity (x*y*z)) 1) 1) 1
 
 {-
 alternating :: (MonadPrim m) => Bool -> Buffon m Bool -> Buffon m (Int, Int)
