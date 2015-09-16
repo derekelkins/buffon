@@ -124,11 +124,6 @@ instance (MonadPrim m) => Num (Buffon m Bool) where
 evenParity :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 evenParity p = fix (\q -> if_ p (if_ p q 0) 1)
 
--- | Calculates: P(geometric (bernoulli p) == r) = (1-p)p^r
-geometric :: (MonadPrim m) => Buffon m Bool -> Buffon m Int
-geometric p = go 0
-    where go !acc = if_ p (go (acc+1)) (return acc)
-
 {-
 
 von Neumann schema
@@ -140,7 +135,7 @@ Let U = (U_1, ..., U_n) be a vector of bit streams.
 Let type(U) be the permutation that sorts U.  type(U) is the order type of U.
 The von Neumann schema is:
 
-vN[Perms] p = go 0
+vN[Perms] p = go 1
     where go k = do
             n <- geometric p
             let U be an n-vector of uniformly distributed bit streams
@@ -153,38 +148,43 @@ sum_(k>=1) k P(snd (vN[Perms] (bernoulli p)) == k) = 1/s
 
 -}
 
+-- | Calculates: P(geometric (bernoulli p) == r) = (1-p)p^r
+-- | Fits the von Neumann schema with F(z) = 1/(1-z) (i.e. Perms = all permutations)
+geometric :: (MonadPrim m) => Buffon m Bool -> Buffon m Int
+geometric p = go 0
+    where go !acc = if_ p (go (acc+1)) (return acc)
+
 -- | Calculates: P(fst (poisson (bernoulli p)) == r) = exp(-p)p^r/r!
--- | Fits the von Neumann schema with F(z) = exp(z)
+-- | Fits the von Neumann schema with F(z) = exp(z) (i.e. Perms = sorted permutations)
 -- Note: P(liftM2 (+) (fst (poisson (bernoulli p))) (fst (poisson (bernoulli q))) == r) = exp(-p-q)(p+q)^r/r!
 poisson :: (MonadPrim m) => Buffon m Bool -> Buffon m (Int, Int)
 poisson p = go 1
     where go !k = do
             n <- geometric p
-            let loop 0  _ = return (n,k)
-                loop 1  _ = return (n,k)
-                loop i bs = walk bs []
-                    where walk [] acc = walk' acc
-                          walk (b:bs) acc = do
-                            b' <- toss
-                            case compare b b' of
-                                LT -> go (k+1)
-                                EQ -> walk bs (b:acc)
-                                GT -> loop (i-1) acc
-                          walk' acc = do
-                            b <- toss
-                            b' <- toss
-                            case compare b b' of
-                                LT -> go (k+1)
-                                EQ -> walk' (b':acc)
-                                GT -> loop (i-1) acc
-            loop n []
+            if_ (isSorted n) (return (n,k)) (go (k+1))
+          isSorted 0 = return True
+          isSorted 1 = 1
+          isSorted i = loopFalse 0
+            where loopFalse j | j < i     = mean (loopTrue j (j+1)) (loopFalse (j+1))
+                              | otherwise = isSorted i
+                  loopTrue cut j | j < i     = mean (loopTrue cut (j+1)) 0
+                                 | otherwise = isSorted cut * isSorted (i-cut)
+
+anotherPoisson :: (MonadPrim m) => Buffon m Bool -> Buffon m (Int, Int)
+anotherPoisson = \p -> let
+            go !k = do
+                n <- geometric p
+                if_ (product (take (n-1) bernoullis)) (return (n,k)) (go (k+1))
+        in go 0
+    where bernoullis = map (bernoulli . recip) [2 :: Double ..]
+
 
 -- | Calculates: P(poisson' (bernoulli p)) = exp(-p) = P(fst (poisson (bernoulli p)) == 0)
 poisson' :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 poisson' = fmap ((0==) . fst) . poisson
 
 -- | Calculates: P(fst (logarithmic (bernoulli p)) == r) = -p^r/(rlog(1-p))
--- | Fits the von Neumann schema with F(z) = -log(1-z)
+-- | Fits the von Neumann schema with F(z) = -log(1-z) (i.e. Perms = cyclic permutations)
 logarithmic :: (MonadPrim m) => Buffon m Bool -> Buffon m (Int, Int)
 logarithmic p = go 1
     where go !k = do
@@ -207,11 +207,15 @@ logarithmic p = go 1
 logarithmic' :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 logarithmic' = fmap ((1==) . fst) . logarithmic
 
+-- TODO: Trigonometric functions from alternating permutations
+
 -- | Calculates: P(squareRoot (bernoulli p)) = sqrt(1-p)
 squareRoot :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 squareRoot p = go 0
     where go !c = if_ p (bump (bump go) c) (return (c==0))
           bump k !c = mean (k (c+1)) (k (c-1))
+
+-- TODO: Buffon machines from binary stochastic grammars.
 
 -- | Calculates: P(ramanujan) = 1/pi
 ramanujan :: (MonadPrim m) => Buffon m Bool
