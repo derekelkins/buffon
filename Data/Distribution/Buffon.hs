@@ -13,6 +13,8 @@ module Data.Distribution.Buffon (
     bernoulli, if_, mean, evenParity, geometric,
     vonNeumann, polylogarithmic, polylogarithmic',
     poisson, poisson', logarithmic, logarithmic',
+    alternating, evenAlternating, oddAlternating,
+    isAlternating, cosine, cotangent, bump,
     ternary, binary, ternaryBistoch, Bistoch, Bistoch',
     fromBistoch, fromBistoch', bistoch,
     squareRoot, ramanujan, arctan, integrate, createReal,
@@ -57,6 +59,11 @@ third = do
 
 toNumberWith :: (Fractional n, MonadPrim m) => Int -> Buffon m Bool -> m n
 toNumberWith n p = runBuffon (go n 0)
+    where go 0 !acc = return (acc/fromIntegral n)
+          go c acc = if_ p (go (c-1) (acc+1)) (go (c-1) acc)
+
+toNumberWithSystemRandomT :: (Fractional n) => Int -> Buffon IO Bool -> IO n
+toNumberWithSystemRandomT n p = runBuffonWithSystemRandomT (go n 0)
     where go 0 !acc = return (acc/fromIntegral n)
           go c acc = if_ p (go (c-1) (acc+1)) (go (c-1) acc)
 
@@ -206,39 +213,59 @@ polylogarithmic r = vonNeumann (\n -> (isCyclic n)^r)
 polylogarithmic' :: (MonadPrim m) => Int -> Buffon m Bool -> Buffon m Bool
 polylogarithmic' r = fmap ((1==) . fst) . polylogarithmic r
 
--- TODO: Trigonometric functions from alternating permutations
-{-
-alternating :: (MonadPrim m) => Bool -> Buffon m Bool -> Buffon m (Int, Int)
-alternating isEven p = go 1
-    where go !k = do
-            n <- geometric p
-            let loop True 0  _ = return (n,k)
-                loop True 1  _ = return (n,k)
-                loop False 0 _ = go (k+1)
-                loop False 1 _ = go (k+1)
-                loop !p !i bs = walk (reverse bs) []
-                    where walk [] acc = walk' acc
-                          walk (b:bs) acc = do
-                            b' <- toss
-                            case if p then compare b b' else compare b' b of
-                                LT -> go (k+1)
-                                EQ -> walk bs (b:acc)
-                                GT -> loop (not p) (i-1) acc
-                          walk' acc = do
-                            b <- toss
-                            b' <- toss
-                            case if p then compare b b' else compare b' b of
-                                LT -> go (k+1)
-                                EQ -> walk' (b':acc)
-                                GT -> loop (not p) (i-1) acc
-            loop isEven n []
--}
+-- | P(fst (alternating (bernoulli p)) == r) = A_r/r! p^r/(sec(p)+tan(p)) = A_r/r! p^r/tan(z/2+pi/4)
+-- | Fits the von Neumann schema with F(z) = sec(z) + tan(z) = tan(z/2+pi/4) (i.e. Perms = alternating permutations)
+-- | For A_n see OEIS A000111 
+alternating :: (MonadPrim m) => Buffon m Bool -> Buffon m (Int, Int)
+alternating = vonNeumann (\n -> isAlternating False n [])
 
--- | P(squareRoot (bernoulli p)) = sqrt(1-p)
+-- | P(fst (evenAlternating (bernoulli p)) == r) = A_r/r! p^r/sec(p) for even r, 0 otherwise
+-- | Fits the von Neumann schema with F(z) = sec(z) (i.e. Perms = even length alternating permutations)
+evenAlternating :: (MonadPrim m) => Buffon m Bool -> Buffon m (Int, Int)
+evenAlternating = vonNeumann (\n -> if even n then isAlternating False n [] else 0)
+
+-- | P(fst (oddAlternating (bernoulli p)) == r) = A_r/r! p^r/tan(p) for odd r, 0 otherwise
+-- | Fits the von Neumann schema with F(z) = tan(z) (i.e. Perms = odd length alternating permutations)
+oddAlternating :: (MonadPrim m) => Buffon m Bool -> Buffon m (Int, Int)
+oddAlternating = vonNeumann (\n -> if odd n then isAlternating False n [] else 0)
+
+isAlternating :: (MonadPrim m) => Bool -> Int -> [Bool] -> Buffon m Bool
+isAlternating !_  0  _ = 1
+isAlternating !_  1  _ = 1
+isAlternating !p !i bs = walk bs [] -- is it better to reverse bs here or append in the calls?
+    where walk [] acc = walk' acc
+          walk (b:bs) acc = do
+            b' <- toss
+            case if p then compare b b' else compare b' b of
+                LT -> 0
+                EQ -> walk bs (b:acc)
+                GT -> isAlternating (not p) (i-1) (acc++[b'])
+          walk' acc = do
+            b <- toss
+            b' <- toss
+            case compare b b' of
+                LT -> 0
+                EQ -> walk' (b':acc)
+                GT -> isAlternating (not p) (i-1) (acc++[p==b'])
+
+-- | P(cosine (bernoulli p)) = cos(p) = P(fst (evenAlternating (bernoulli p)) == 0)
+cosine :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
+cosine = fmap ((0==) . fst) . evenAlternating
+
+-- | P(cotangent (bernoulli p)) = pcot(p) = P(fst (oddAlternating (bernoulli p)) == 1)
+cotangent :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
+cotangent = fmap ((1==) . fst) . oddAlternating
+
+-- | P(squareRoot (bernoulli p)) = sqrt(p)
 squareRoot :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
-squareRoot p = go 0
-    where go !c = if_ p (bump (bump go) c) (return (c==0))
-          bump k !c = mean (k (c+1)) (k (c-1))
+squareRoot = bump 1 . negate
+
+-- | P(bump t (bernoulli p)) = (1-p)S(p/2)
+-- |    where S(z) = sum_(n>=0) ((t+1)n choose n) z^(tn+n)
+bump :: (MonadPrim m) => Int -> Buffon m Bool -> Buffon m Bool
+bump t p = go 0
+    where go !c = if_ p (bump' (bump' go) c) (return (c==0))
+          bump' k !c = mean (k (c+t)) (k (c-1))
 
 -- | Bi(nary )stoch(astic) (grammar)
 -- | Let G be a Bistoch' X.  It represents the following grammar:
