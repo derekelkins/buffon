@@ -12,7 +12,7 @@ module Data.Distribution.Buffon (
     expectationWith, expectationM, expectation,
     bernoulli, if_, mean, evenParity, geometric,
     vonNeumann, polylogarithmic, polylogarithmic',
-    poisson, poisson', logarithmic, logarithmic',
+    poisson, poisson', anotherPoisson, logarithmic, logarithmic',
     alternating, evenAlternating, oddAlternating,
     isAlternating, cosine, cotangent, bump,
     ternary, binary, ternaryBistoch, Bistoch, Bistoch',
