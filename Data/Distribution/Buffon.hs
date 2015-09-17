@@ -14,9 +14,9 @@ module Data.Distribution.Buffon (
     vonNeumann, polylogarithmic, polylogarithmic',
     poisson, poisson', anotherPoisson, logarithmic, logarithmic',
     alternating, evenAlternating, oddAlternating,
-    isAlternating, cosine, cotangent, bump,
+    isAlternating, cosine, sine, cotangent, bump, erf,
     ternary, binary, ternaryBistoch, Bistoch, Bistoch',
-    fromBistoch, fromBistoch', bistoch,
+    fromBistoch, fromBistoch', bistoch, integrate', arcsin,
     squareRoot, ramanujan, arctan, integrate, createReal,
     pi8, pi4, zeta3
   ) where
@@ -252,6 +252,10 @@ isAlternating !p !i bs = walk bs [] -- is it better to reverse bs here or append
 cosine :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 cosine = fmap ((0==) . fst) . evenAlternating
 
+-- | P(sine (bernoulli p)) = sin(p)
+sine :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
+sine p = squareRoot (-cosine p^2)
+
 -- | P(cotangent (bernoulli p)) = pcot(p) = P(fst (oddAlternating (bernoulli p)) == 1)
 cotangent :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
 cotangent = fmap ((1==) . fst) . oddAlternating
@@ -336,12 +340,25 @@ createReal = do
         n <- geometric toss
         return (testBit (u :: Word64) n))
 
-integrate :: (MonadPrim m) => (Buffon m Bool -> Buffon m Bool) -> Buffon m Bool -> Buffon m Bool
-integrate f p = createReal >>= f . (p*)
+-- | P(integrate f (bernoulli p)) = int_0^p f(w)dw/p
+integrate' :: (MonadPrim m) => (Buffon m Bool -> Buffon m Bool) -> Buffon m Bool -> Buffon m Bool
+integrate' f p = createReal >>= f . (p*)
 
--- | P(arctan (bernoulli p)) = atan p
+-- | P(integrate f (bernoulli p)) = int_0^p f(w)dw
+integrate :: (MonadPrim m) => (Buffon m Bool -> Buffon m Bool) -> Buffon m Bool -> Buffon m Bool
+integrate f p = integrate' f p * p
+
+-- | P(arctan (bernoulli p)) = atan(p)
 arctan :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
-arctan p = p * (do u <- createReal; evenParity (p*(p*(u*u))))
+arctan p = (do u <- createReal; evenParity (p*(p*(u*u)))) * p
+
+-- | P(arcsin (bernoulli p)) = asin(p)/2
+arcsin :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
+arcsin p = mean (integrate (\w -> evenParity w * squareRoot (-w*w)) p) (-squareRoot (-p*p))
+
+-- | P(erf (bernoulli p)) = sqrt(pi)erf(p)/2
+erf :: (MonadPrim m) => Buffon m Bool -> Buffon m Bool
+erf p = integrate (\w -> poisson' (w*w)) p
 
 -- | P(pi8) = pi/8 (via (atan(1/2) + atan(1/3))/2)
 pi8 :: (MonadPrim m) => Buffon m Bool
@@ -353,4 +370,4 @@ pi4 = do u <- createReal; evenParity (u*u)
 
 -- | P(zeta3) = 3zeta(3)/4
 zeta3 :: (MonadPrim m) => Buffon m Bool
-zeta3 = integrate (\x -> integrate (\y -> integrate (\z -> evenParity (x*y*z)) 1) 1) 1
+zeta3 = integrate' (\x -> integrate' (\y -> integrate' (\z -> evenParity (x*y*z)) 1) 1) 1
