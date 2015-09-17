@@ -11,9 +11,12 @@ module Data.Distribution.Buffon (
     toss, third, toNumberWith, toNumberM, toNumber,
     expectationWith, expectationM, expectation,
     bernoulli, if_, mean, evenParity, geometric,
+    vonNeumann, polylogarithmic, polylogarithmic',
     poisson, poisson', logarithmic, logarithmic',
+    ternary, binary, ternaryBistoch, Bistoch, Bistoch',
+    fromBistoch, fromBistoch', bistoch,
     squareRoot, ramanujan, arctan, integrate, createReal,
-    pi8, pi4
+    pi8, pi4, zeta3
   ) where
 import Control.Monad.IO.Class ( MonadIO )
 import Control.Monad.Primitive ( PrimMonad )
@@ -139,6 +142,7 @@ evenParity p = fix (\q -> if_ p (if_ p q 0) 1)
 -- | s = (1-p)F(p)
 -- | P(snd (vonNeumann[Perms] (bernoulli p)) == k) = s(1-s)^(k-1)
 -- | sum_(k>=1) k P(snd (vonNeumann[Perms] (bernoulli p)) == k) = 1/s
+-- | The actual function takes a function inClass such that P(inClass n) = F_n/n!
 vonNeumann :: (MonadPrim m) => (Int -> Buffon m Bool) -> Buffon m Bool -> Buffon m (Int, Int)
 vonNeumann inClass p = go 1
     where go !k = do
