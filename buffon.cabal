@@ -4,16 +4,22 @@
 name:                buffon
 version:             0.1.0.1
 synopsis:            An implementation of Buffon machines.
--- description:         
+description:         An implementation of everything in "On Buffon Machines and Numbers".
 license:             BSD2
 license-file:        LICENSE
 author:              Derek Elkins
 maintainer:          derek.a.elkins+github@gmail.com
--- copyright:           
+homepage:            https://github.com/derekelkins/buffon
+bug-reports:         https://github.com/derekelkins/buffon/issues
+copyright:           2015 Derek Elkins
 category:            Math
 build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
+
+source-repository head
+  type: git
+  location: git://github.com/derekelkins/buffon.git
 
 library
   exposed-modules: Data.Distribution.Buffon

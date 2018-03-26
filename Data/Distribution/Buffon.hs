@@ -272,7 +272,7 @@ bump t p = go 0
           bump' k !c = mean (k (c+t)) (k (c-1))
 
 -- | Bi(nary )stoch(astic) (grammar)
--- | Let G be a Bistoch' X.  It represents the following grammar:
+-- | Let G be a Bistoch X.  It represents the following grammar:
 -- | X_i = T (G X_i False) | H (G X_i True)
 -- | where X_i is in X, the set of non-terminals and we sequence the list of results from g.
 -- | See ternaryBistoch for an example.
@@ -340,7 +340,7 @@ createReal = do
         n <- geometric toss
         return (testBit (u :: Word64) n))
 
--- | P(integrate f (bernoulli p)) = int_0^p f(w)dw/p
+-- | P(integrate' f (bernoulli p)) = int_0^p f(w)dw/p
 integrate' :: (MonadPrim m) => (Buffon m Bool -> Buffon m Bool) -> Buffon m Bool -> Buffon m Bool
 integrate' f p = createReal >>= f . (p*)
 
