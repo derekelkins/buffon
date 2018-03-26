@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                buffon
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:            An implementation of Buffon machines.
 -- description:         
 license:             BSD2
@@ -20,11 +20,11 @@ library
   -- other-modules:       
   -- other-extensions:    
   build-depends:       
-    base >=4.8 && <4.9,
+    base >=4.8 && <4.11,
+    monad-primitive >= 0.1 && <0.2,
+    primitive >= 0.6 && <0.7,
     mwc-random >= 0.13 && <0.14,
     mwc-random-monad >=0.7 && <0.8,
-    monad-primitive >= 0.1 && <0.2,
-    transformers >= 0.4 && <0.5,
-    primitive >= 0.6 && <0.7
+    transformers >= 0.4 && <0.6
   -- hs-source-dirs:      
   default-language:    Haskell2010
